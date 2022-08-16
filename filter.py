@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from skimage.measure import regionprops_table
 from skimage.transform import rotate, AffineTransform, warp
+from scipy.fft import fft2, fftshift, ifft2, ifftshift
 import scipy.ndimage as nd
 from scipy.spatial.distance import pdist
 
@@ -92,8 +93,32 @@ def fft_filter(valid_domain):
     A = warp(A, tform)
     B = warp(B, tform)
 
-    # FFT
-    return A, B
+    Ix = valid_domain.copy()  # unsure how this works
+    for k in range(Ix.shape[2]):
+        fftIm = Ix[:, :, k]
+        fftIm[fftIm > 3] = 3
+        fftIm[fftIm < -3] = -3
+        fftIm[np.isnull(fftIm)] = 0
+        fftIm = fftshift(fft2(np.float(fftIm)))
+        P = np.abs(fftIm)
+        mP = np.nanmean(P)
+        stdP = np.nanstd(P)
+        P = (P - mP) > 10 * stdP
+        sA = np.nansum(P[A])
+        sB = np.nansum(P[B])
+        if (sA / sB >= 2 | sB / sA >= 2) & (sA > 500 | sB > 500):
+            if sA > sB:
+                mask = A.copy()
+            elif sB > sA:
+                mask = B.copy()
+
+            foo1 = np.isnan(valid_domain[:, :, k])
+            foo2 = np.real(ifft2(ifftshift(fftIm * (1 - (mask)))))
+            foo2[foo1] = np.nan
+
+            Ix[:, :, k] = foo2
+
+    return Ix
 
 
 if __name__ == '__main__':
